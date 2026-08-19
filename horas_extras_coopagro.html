@@ -901,6 +901,35 @@ function renderListado(){
 let detalleActual = null;
 let detalleEditable = false;
 
+function filaEditableHTML(iid, it){
+  it = it || { tipo: "100", fecha: "", horas: "", obs: "" };
+  const esNoc = it.tipo === "nocturnas";
+  return `<tr data-item-id="${iid}" data-tipo="${it.tipo}">
+    <td>
+      ${esNoc
+        ? `<input type="date" class="ed-fecha" value="${it.fecha||''}" style="margin-bottom:4px;"><input type="date" class="ed-fecha-hasta" value="${it.fechaHasta||''}">`
+        : `<input type="date" class="ed-fecha" value="${it.fecha||''}">`}
+    </td>
+    <td>
+      <select class="ed-tipo" onchange="cambiarTipoEdicion(this)">
+        <option value="100" ${it.tipo==="100"?"selected":""}>100%</option>
+        <option value="200" ${it.tipo==="200"?"selected":""}>200%</option>
+        <option value="nocturnas" ${it.tipo==="nocturnas"?"selected":""}>Nocturnas</option>
+      </select>
+    </td>
+    <td><input type="number" class="ed-horas" value="${it.horas}" style="width:70px;" ${esNoc?'disabled':''}></td>
+    <td><input type="text" class="ed-obs" maxlength="60" value="${it.obs||''}" style="width:120px;"></td>
+    <td><button class="danger" onclick="this.closest('tr').remove()">✕</button></td>
+  </tr>`;
+}
+
+let nuevaFilaDetalleCount = 0;
+function agregarFilaDetalleAdmin(){
+  nuevaFilaDetalleCount++;
+  const iid = "nueva_" + nuevaFilaDetalleCount;
+  document.querySelector("#tabla-detalle tbody").insertAdjacentHTML("beforeend", filaEditableHTML(iid));
+}
+
 function abrirDetalle(periodoId, personalId, editable){
   editable = !!editable;
   const p = PERSONAL[personalId];
@@ -911,6 +940,7 @@ function abrirDetalle(periodoId, personalId, editable){
 
   detalleActual = { periodoId, personalId, p, c, tot, periodo };
   detalleEditable = editable;
+  nuevaFilaDetalleCount = 0;
 
   const items = Object.entries(c.items || {}).sort((a,b) => (a[1].fecha||"").localeCompare(b[1].fecha||""));
   let filas = "";
@@ -922,26 +952,7 @@ function abrirDetalle(periodoId, personalId, editable){
       filas += `<tr><td>${fechaTxt}</td><td>${labelTipo(it.tipo)}</td><td>${it.horas} hs</td><td class="muted">${it.obs||''}</td></tr>`;
     });
   } else {
-    items.forEach(([iid,it]) => {
-      const esNoc = it.tipo === "nocturnas";
-      filas += `<tr data-item-id="${iid}" data-tipo="${it.tipo}">
-        <td>
-          ${esNoc
-            ? `<input type="date" class="ed-fecha" value="${it.fecha||''}" style="margin-bottom:4px;"><input type="date" class="ed-fecha-hasta" value="${it.fechaHasta||''}">`
-            : `<input type="date" class="ed-fecha" value="${it.fecha||''}">`}
-        </td>
-        <td>
-          <select class="ed-tipo" onchange="cambiarTipoEdicion(this)">
-            <option value="100" ${it.tipo==="100"?"selected":""}>100%</option>
-            <option value="200" ${it.tipo==="200"?"selected":""}>200%</option>
-            <option value="nocturnas" ${it.tipo==="nocturnas"?"selected":""}>Nocturnas</option>
-          </select>
-        </td>
-        <td><input type="number" class="ed-horas" value="${it.horas}" style="width:70px;" ${esNoc?'disabled':''}></td>
-        <td><input type="text" class="ed-obs" maxlength="60" value="${it.obs||''}" style="width:120px;"></td>
-        <td><button class="danger" onclick="this.closest('tr').remove()">✕</button></td>
-      </tr>`;
-    });
+    items.forEach(([iid,it]) => { filas += filaEditableHTML(iid, it); });
   }
 
   document.getElementById("modal-detalle-contenido").innerHTML = `
@@ -958,7 +969,7 @@ function abrirDetalle(periodoId, personalId, editable){
       <thead><tr><th>Fecha</th><th>Tipo</th><th>Horas</th><th>Obs.</th>${editable ? "<th></th>" : ""}</tr></thead>
       <tbody>${filas}</tbody>
     </table>
-    ${editable ? '<div class="muted" style="margin-top:8px;">Corregí lo que haga falta y tocá "Guardar cambios" abajo.</div>' : ''}
+    ${editable ? '<button style="margin-top:10px;" onclick="agregarFilaDetalleAdmin()">+ Agregar carga</button><div class="muted" style="margin-top:8px;">Corregí o agregá lo que haga falta y tocá "Guardar cambios" abajo.</div>' : ''}
   `;
   document.getElementById("modal-detalle").classList.remove("hidden");
 
