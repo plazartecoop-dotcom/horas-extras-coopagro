@@ -271,29 +271,44 @@
 
     <!-- ESTADISTICAS -->
     <div id="tab-stats" class="hidden">
-      <div class="tabs" style="margin-bottom:10px;">
-        <button id="cmp-btn-sectores" class="active" onclick="setModoCmp('sectores')">Sectores</button>
-        <button id="cmp-btn-personas" onclick="setModoCmp('personas')">Personas</button>
-        <button id="cmp-btn-periodos" onclick="setModoCmp('periodos')">Períodos</button>
+      <div class="tabs" style="margin-bottom:14px;">
+        <button id="stats-btn-comp" class="active" onclick="setStatsSubTab('comp')">Comparaciones</button>
+        <button id="stats-btn-hist" onclick="setStatsSubTab('hist')">Histórico / Finanzas</button>
       </div>
-      <div id="cmp-panel-personas" class="hidden card">
-        <div class="row-flex" style="margin-bottom:8px;">
-          <button id="cmp-btn-todos" class="submode active" onclick="setPersonasModo(true)">Todos</button>
-          <button id="cmp-btn-elegir" class="submode" onclick="setPersonasModo(false)">Elegir personas</button>
+
+      <div id="stats-comparaciones">
+        <div class="tabs" style="margin-bottom:10px;">
+          <button id="cmp-btn-sectores" class="active" onclick="setModoCmp('sectores')">Sectores</button>
+          <button id="cmp-btn-personas" onclick="setModoCmp('personas')">Personas</button>
+          <button id="cmp-btn-periodos" onclick="setModoCmp('periodos')">Períodos</button>
         </div>
-        <div id="cmp-lista-personas"></div>
+        <div id="cmp-panel-personas" class="hidden card">
+          <div class="row-flex" style="margin-bottom:8px;">
+            <button id="cmp-btn-todos" class="submode active" onclick="setPersonasModo(true)">Todos</button>
+            <button id="cmp-btn-elegir" class="submode" onclick="setPersonasModo(false)">Elegir personas</button>
+          </div>
+          <div id="cmp-lista-personas"></div>
+        </div>
+        <div id="cmp-panel-periodos" class="card">
+          <div class="muted" style="margin-bottom:8px;">Elegí uno o varios períodos (si no elegís ninguno, se toman todos)</div>
+          <div id="cmp-lista-periodos"></div>
+        </div>
+        <div class="row-flex" style="justify-content:flex-end; margin-bottom:10px;">
+          <button style="flex:none;" onclick="imprimirStats()">Imprimir</button>
+          <button style="flex:none;" class="primary" onclick="compartirStats()">Compartir</button>
+        </div>
+        <div class="stat-grid" id="stat-cards"></div>
+        <div style="position:relative; width:100%; height:280px;">
+          <canvas id="chartCmp"></canvas>
+        </div>
       </div>
-      <div id="cmp-panel-periodos" class="card">
-        <div class="muted" style="margin-bottom:8px;">Elegí uno o varios períodos (si no elegís ninguno, se toman todos)</div>
-        <div id="cmp-lista-periodos"></div>
-      </div>
-      <div class="row-flex" style="justify-content:flex-end; margin-bottom:10px;">
-        <button style="flex:none;" onclick="imprimirStats()">Imprimir</button>
-        <button style="flex:none;" class="primary" onclick="compartirStats()">Compartir</button>
-      </div>
-      <div class="stat-grid" id="stat-cards"></div>
-      <div style="position:relative; width:100%; height:280px;">
-        <canvas id="chartCmp"></canvas>
+
+      <div id="stats-historico" class="hidden">
+        <div class="card">
+          <h3>Histórico de envíos a Finanzas</h3>
+          <p class="muted" style="margin-bottom:14px;">Todo lo que generaste (PDF individuales, combinados, o documentos) queda registrado acá, para consultar o volver a generar en caso de duda o reenvío.</p>
+          <div id="historico-finanzas-contenido"></div>
+        </div>
       </div>
     </div>
 
@@ -415,6 +430,7 @@ let filaCount = 0;
 let ultimaCargaEnviada = null;
 let listadoSeleccionados = new Set();
 let listadoPeriodoAnterior = null;
+let ENVIOS_FINANZAS = {};
 
 /* =========================================================
    CARGA INICIAL DESDE FIREBASE
@@ -512,6 +528,80 @@ db.ref(ROOT + "/cargas").on("value", snap => {
     renderPendientes();
   }
 });
+
+db.ref(ROOT + "/enviosFinanzas").on("value", snap => {
+  ENVIOS_FINANZAS = snap.val() || {};
+  const tabStats = document.getElementById("tab-stats");
+  const histVisible = tabStats && !tabStats.classList.contains("hidden") &&
+                       !document.getElementById("stats-historico").classList.contains("hidden");
+  if (histVisible) renderHistoricoFinanzas();
+});
+
+function registrarEnvioFinanzas(tipo, periodoId, operarioIds){
+  db.ref(`${ROOT}/enviosFinanzas`).push({
+    tipo, periodoId, operarios: operarioIds, fecha: Date.now()
+  });
+}
+
+function renderHistoricoFinanzas(){
+  const cont = document.getElementById("historico-finanzas-contenido");
+  if (!cont) return;
+  const lista = Object.entries(ENVIOS_FINANZAS).sort((a,b) => (b[1].fecha||0) - (a[1].fecha||0));
+  if (!lista.length) { cont.innerHTML = '<p class="muted">Todavía no generaste ningún envío.</p>'; return; }
+
+  const tipoLabel = { pdf_individual: "PDF individual", pdf_combinado: "PDF combinado", documento_html: "Documento HTML" };
+
+  let html = '<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Período</th><th>Operario(s)</th><th></th></tr></thead><tbody>';
+  lista.forEach(([id, e]) => {
+    const fechaTxt = e.fecha ? new Date(e.fecha).toLocaleString("es-AR") : "-";
+    const periodo = PERIODOS[e.periodoId];
+    const periodoTxt = periodo ? ("HS de " + periodo.nombre) : (e.periodoId || "-");
+    const ops = (e.operarios || []).map(pid => PERSONAL[pid] ? PERSONAL[pid].apellidoNombre : "?").join(", ");
+    html += `<tr>
+      <td>${fechaTxt}</td>
+      <td>${tipoLabel[e.tipo] || e.tipo}</td>
+      <td>${periodoTxt}</td>
+      <td>${ops || "-"}</td>
+      <td style="text-align:right;"><button onclick="regenerarEnvio('${id}')">Volver a generar</button></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  cont.innerHTML = html;
+}
+
+function regenerarEnvio(envioId){
+  const e = ENVIOS_FINANZAS[envioId];
+  if (!e) return;
+  if (e.tipo === "pdf_individual") {
+    regenerarPDFIndividual(e.periodoId, (e.operarios || [])[0]);
+  } else if (e.tipo === "pdf_combinado") {
+    regenerarPDFCombinado(e.periodoId, e.operarios || []);
+  } else if (e.tipo === "documento_html") {
+    generarDocumentoFinanzas(e.periodoId, e.operarios || []);
+  }
+}
+
+function regenerarPDFIndividual(periodoId, personalId){
+  const p = PERSONAL[personalId];
+  const periodo = PERIODOS[periodoId];
+  if (!p || !periodo) { alert("No se encontró ese operario o período (puede haber sido eliminado)."); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  agregarPaginaPDF(doc, periodoId, personalId, true);
+  const nombreArchivo = ("HS_" + p.apellidoNombre + "_" + periodo.nombre).replace(/\s+/g,"_") + ".pdf";
+  doc.save(nombreArchivo);
+}
+
+function regenerarPDFCombinado(periodoId, ids){
+  if (!ids.length) return;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  let primera = true;
+  ids.forEach(id => { agregarPaginaPDF(doc, periodoId, id, primera); primera = false; });
+  const periodo = PERIODOS[periodoId];
+  const nombreArchivo = ("HS_" + (periodo ? periodo.nombre : periodoId) + "_seleccion").replace(/\s+/g,"_") + ".pdf";
+  doc.save(nombreArchivo);
+}
 
 function actualizarPeriodoActivo(){
   const p = PERIODOS[PERIODO_ACTIVO_ID];
@@ -794,6 +884,15 @@ function cambiarTab(nombre){
     document.getElementById("tab-btn-" + t).classList.toggle("active", t === nombre);
   });
   if (nombre === "stats") renderStats();
+}
+
+function setStatsSubTab(modo){
+  document.getElementById("stats-btn-comp").classList.toggle("active", modo === "comp");
+  document.getElementById("stats-btn-hist").classList.toggle("active", modo === "hist");
+  document.getElementById("stats-comparaciones").classList.toggle("hidden", modo !== "comp");
+  document.getElementById("stats-historico").classList.toggle("hidden", modo !== "hist");
+  if (modo === "hist") renderHistoricoFinanzas();
+  else renderStats();
 }
 
 /* =========================================================
@@ -1129,8 +1228,9 @@ function toggleSeleccionarTodosListado(marcar, periodoId){
   renderListado();
 }
 
-function generarDocumentoFinanzas(periodoId){
-  if (listadoSeleccionados.size === 0) return;
+function generarDocumentoFinanzas(periodoId, idsOverride){
+  const ids = idsOverride && idsOverride.length ? idsOverride : [...listadoSeleccionados];
+  if (ids.length === 0) return;
   const periodo = PERIODOS[periodoId];
   const cargasPeriodo = CARGAS[periodoId] || {};
 
@@ -1138,7 +1238,7 @@ function generarDocumentoFinanzas(periodoId){
   let totalGeneral = 0;
   let cantOperarios = 0;
 
-  [...listadoSeleccionados].forEach(id => {
+  ids.forEach(id => {
     const p = PERSONAL[id];
     const c = cargasPeriodo[id];
     if (!p || !c) return;
@@ -1238,6 +1338,8 @@ function generarDocumentoFinanzas(periodoId){
   const blob = new Blob([html], { type: "text/html" });
   const file = new File([blob], nombreArchivo, { type: "text/html" });
 
+  registrarEnvioFinanzas("documento_html", periodoId, ids);
+
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     navigator.share({ files: [file], title: nombreArchivo }).catch(()=>{});
   } else {
@@ -1263,6 +1365,8 @@ function compartirSeleccionadosListado(periodoId){
   const blob = doc.output("blob");
   const file = new File([blob], nombreArchivo, { type: "application/pdf" });
 
+  registrarEnvioFinanzas("pdf_combinado", periodoId, [...listadoSeleccionados]);
+
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     navigator.share({ files: [file], title: nombreArchivo }).catch(()=>{});
   } else {
@@ -1274,6 +1378,7 @@ function compartirSeleccionadosListado(periodoId){
 function generarPDFDetalle(){
   if (!detalleActual) return;
   const { doc, nombreArchivo } = construirPDFDetalle();
+  registrarEnvioFinanzas("pdf_individual", detalleActual.periodoId, [detalleActual.personalId]);
   doc.save(nombreArchivo);
 }
 
@@ -1282,6 +1387,8 @@ function compartirDetallePDF(){
   const { doc, nombreArchivo } = construirPDFDetalle();
   const blob = doc.output("blob");
   const file = new File([blob], nombreArchivo, { type: "application/pdf" });
+
+  registrarEnvioFinanzas("pdf_individual", detalleActual.periodoId, [detalleActual.personalId]);
 
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     navigator.share({ files: [file], title: nombreArchivo }).catch(()=>{});
