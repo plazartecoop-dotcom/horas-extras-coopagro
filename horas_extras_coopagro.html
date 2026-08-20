@@ -966,27 +966,26 @@ function renderListado(){
   SECTORES.forEach(sector => {
     const filas = porSector[sector];
     if (!filas || filas.length === 0) return;
-    let sub = {h100:0,h200:0,hnoc:0,total:0};
+    let sub = {h100:0,h200:0,hnoc:0};
     let filasHtml = "";
     filas.sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(f => {
-      sub.h100 += f.tot.h100; sub.h200 += f.tot.h200; sub.hnoc += f.tot.hnoc; sub.total += f.tot.total;
+      sub.h100 += f.tot.h100; sub.h200 += f.tot.h200; sub.hnoc += f.tot.hnoc;
       const estadoPill = f.estado === "aprobado" ? '<span class="pill ok">Aprobado</span>' : '<span class="pill warn">Pendiente</span>';
       const marcado = listadoSeleccionados.has(f.id) ? "checked" : "";
       filasHtml += `<tr>
         <td><input type="checkbox" style="width:auto;" ${marcado} onchange="toggleSeleccionListado('${f.id}')"></td>
         <td>${f.nombre}</td>
         <td>${f.tot.h100||''}</td><td>${f.tot.h200||''}</td><td>${f.tot.hnoc||''}</td>
-        <td><b>${f.tot.total}</b></td>
         <td>${estadoPill}</td>
         <td style="text-align:right;"><button onclick="abrirDetalle('${periodoId}','${f.id}')">Detalle</button></td>
       </tr>`;
     });
     html += `<div class="card">
-      <h3><span class="sector-dot" style="${dotSector(sector)}"></span>${sector} · ${filas.length} operario(s) · ${sub.total} hs</h3>
+      <h3><span class="sector-dot" style="${dotSector(sector)}"></span>${sector} · ${filas.length} operario(s) · ${sub.h100} hs (100%) · ${sub.h200} hs (200%) · ${sub.hnoc} hs (Noct.)</h3>
       <table>
-        <thead><tr><th></th><th>Operario</th><th>100%</th><th>200%</th><th>Noct.</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th></th><th>Operario</th><th>100%</th><th>200%</th><th>Noct.</th><th>Estado</th><th></th></tr></thead>
         <tbody>${filasHtml}</tbody>
-        <tfoot><tr><td></td><td>Subtotal</td><td>${sub.h100}</td><td>${sub.h200}</td><td>${sub.hnoc}</td><td>${sub.total}</td><td colspan="2"></td></tr></tfoot>
+        <tfoot><tr><td></td><td>Subtotal</td><td>${sub.h100}</td><td>${sub.h200}</td><td>${sub.hnoc}</td><td colspan="2"></td></tr></tfoot>
       </table>
     </div>`;
   });
@@ -1062,7 +1061,6 @@ function abrirDetalle(periodoId, personalId, editable){
       <div class="stat-box"><div class="l">100%</div><div class="v">${tot.h100}</div></div>
       <div class="stat-box"><div class="l">200%</div><div class="v">${tot.h200}</div></div>
       <div class="stat-box"><div class="l">Nocturnas</div><div class="v">${tot.hnoc}</div></div>
-      <div class="stat-box"><div class="l">Total</div><div class="v" style="color:var(--green);">${tot.total}</div></div>
     </div>
     <table id="tabla-detalle">
       <thead><tr><th>Fecha</th><th>Tipo</th><th>Horas</th><th>Obs.</th>${editable ? "<th></th>" : ""}</tr></thead>
@@ -1173,10 +1171,8 @@ function agregarPaginaPDF(doc, periodoId, personalId, esPrimera){
 
   doc.setFontSize(11);
   doc.text("100%: " + tot.h100 + " hs      200%: " + tot.h200 + " hs      Nocturnas: " + tot.hnoc + " hs", 14, 44);
-  doc.setFontSize(12);
-  doc.text("Total a liquidar: " + tot.total + " hs", 14, 52);
 
-  let y = 64;
+  let y = 60;
   doc.setFontSize(10);
   doc.text("Fecha", 14, y);
   doc.text("Tipo", 70, y);
@@ -1235,7 +1231,7 @@ function generarDocumentoFinanzas(periodoId, idsOverride){
   const cargasPeriodo = CARGAS[periodoId] || {};
 
   const porSector = {};
-  let totalGeneral = 0;
+  let total100 = 0, total200 = 0, totalNoc = 0;
   let cantOperarios = 0;
 
   ids.forEach(id => {
@@ -1243,7 +1239,7 @@ function generarDocumentoFinanzas(periodoId, idsOverride){
     const c = cargasPeriodo[id];
     if (!p || !c) return;
     const tot = calcularTotales(c.items);
-    totalGeneral += tot.total;
+    total100 += tot.h100; total200 += tot.h200; totalNoc += tot.hnoc;
     cantOperarios++;
     porSector[p.sector] = porSector[p.sector] || [];
     porSector[p.sector].push({ p, c, tot });
@@ -1280,8 +1276,8 @@ function generarDocumentoFinanzas(periodoId, idsOverride){
             <div style="width:28px; height:28px; border-radius:50%; background:color-mix(in srgb, ${color} 15%, white); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; color:${color};">${iniciales(p.apellidoNombre)}</div>
             <span style="font-size:14px;">${p.apellidoNombre}</span>
           </div>
-          <span style="display:flex; align-items:center; gap:10px; font-size:13px;">
-            <span style="color:#7a7a75;">${tot.total} hs</span>
+          <span style="display:flex; align-items:center; gap:10px; font-size:12px; color:#7a7a75;">
+            <span>100%: ${tot.h100||0}h · 200%: ${tot.h200||0}h · Noct: ${tot.hnoc||0}h</span>
             <span id="ic_${opId}" style="display:inline-block; color:#aaa; transition:transform .15s;">&#9660;</span>
           </span>
         </div>
@@ -1319,10 +1315,12 @@ function generarDocumentoFinanzas(periodoId, idsOverride){
         </div>
         <span style="background:#e8f5ee; color:#1d7a4f; font-size:12px; padding:4px 10px; border-radius:20px; white-space:nowrap;">Cerrado ${hoy}</span>
       </div>
-      <div style="display:flex; gap:20px; margin-top:14px; padding-top:14px; border-top:1px solid #eee;">
+      <div style="display:flex; gap:16px; margin-top:14px; padding-top:14px; border-top:1px solid #eee; flex-wrap:wrap;">
         <div><div style="font-size:11px; color:#999;">Período</div><div style="font-size:13px; font-weight:600;">${fmtFecha(periodo.fechaInicio)} al ${fmtFecha(periodo.fechaFin)}</div></div>
         <div><div style="font-size:11px; color:#999;">Operarios</div><div style="font-size:13px; font-weight:600;">${cantOperarios}</div></div>
-        <div><div style="font-size:11px; color:#999;">Total horas</div><div style="font-size:13px; font-weight:600; color:#185fa5;">${totalGeneral} hs</div></div>
+        <div><div style="font-size:11px; color:#999;">100%</div><div style="font-size:13px; font-weight:600; color:#185fa5;">${total100} hs</div></div>
+        <div><div style="font-size:11px; color:#999;">200%</div><div style="font-size:13px; font-weight:600; color:#b5650a;">${total200} hs</div></div>
+        <div><div style="font-size:11px; color:#999;">Nocturnas</div><div style="font-size:13px; font-weight:600; color:#6a3ea1;">${totalNoc} hs</div></div>
       </div>
     </div>
     <div style="padding:20px 24px;">
@@ -1441,7 +1439,11 @@ function renderPendientes(){
     html += `<div class="card">
       <div class="row-flex" style="justify-content:space-between; align-items:center;">
         <h3 style="margin:0;">${p.apellidoNombre} <span class="muted">· HS de ${periodo.nombre}</span></h3>
-        <span class="pill warn">Total: ${tot.total} hs</span>
+        <span class="row-flex" style="flex:none; gap:6px;">
+          <span class="pill b-100">100%: ${tot.h100} hs</span>
+          <span class="pill b-200">200%: ${tot.h200} hs</span>
+          <span class="pill b-noc">Noct.: ${tot.hnoc} hs</span>
+        </span>
       </div>
       <table style="margin:10px 0;"><tbody>${filas}</tbody></table>
       <div class="row-flex">
@@ -1631,40 +1633,59 @@ function renderStats(){
 
   const periodosActivos = periodosSel.size ? [...periodosSel] : Object.keys(PERIODOS);
   let labels = [], datasets = [];
-  let granTotal = {h100:0,h200:0,hnoc:0,total:0};
+  let granTotal = {h100:0,h200:0,hnoc:0};
+  const COLOR_100 = "#2a78d6", COLOR_200 = "#eb6834", COLOR_NOC = "#8b5fbf";
 
   if (modoCmp === "sectores") {
-    labels = periodosActivos.map(id => "HS de " + (PERIODOS[id]?.nombre || "?"));
-    const porSector = {};
-    SECTORES.forEach(s => porSector[s] = periodosActivos.map(()=>0));
-    periodosActivos.forEach((pid, idx) => {
-      Object.entries(CARGAS[pid] || {}).forEach(([personalId,c]) => {
-        if (c.estado !== "aprobado") return;
-        const p = PERSONAL[personalId]; if (!p) return;
-        const tot = calcularTotales(c.items);
-        porSector[p.sector][idx] += tot.total;
-        granTotal.h100 += tot.h100; granTotal.h200 += tot.h200; granTotal.hnoc += tot.hnoc; granTotal.total += tot.total;
+    const sectoresConDatos = [];
+    const d100 = [], d200 = [], dnoc = [];
+    SECTORES.forEach(sector => {
+      if (sector === "Administrador") return;
+      let s = {h100:0,h200:0,hnoc:0};
+      Object.entries(PERSONAL).forEach(([id,p]) => {
+        if (p.sector !== sector) return;
+        periodosActivos.forEach(pid => {
+          const c = (CARGAS[pid]||{})[id];
+          if (c && c.estado === "aprobado") {
+            const tot = calcularTotales(c.items);
+            s.h100 += tot.h100; s.h200 += tot.h200; s.hnoc += tot.hnoc;
+          }
+        });
       });
+      if (s.h100 || s.h200 || s.hnoc) {
+        sectoresConDatos.push(sector);
+        d100.push(s.h100); d200.push(s.h200); dnoc.push(s.hnoc);
+        granTotal.h100 += s.h100; granTotal.h200 += s.h200; granTotal.hnoc += s.hnoc;
+      }
     });
-    const colores = ["#2a78d6","#eb6834","#1baf7a","#b79be8","#d9634f","#8fa5b3"];
-    datasets = SECTORES.map((s,i) => ({ label:s, data: porSector[s], backgroundColor: colores[i%colores.length] }));
+    labels = sectoresConDatos;
+    datasets = [
+      { label: "100%", data: d100, backgroundColor: COLOR_100 },
+      { label: "200%", data: d200, backgroundColor: COLOR_200 },
+      { label: "Nocturnas", data: dnoc, backgroundColor: COLOR_NOC }
+    ];
   }
   else if (modoCmp === "personas" && !mostrarTodasPersonas && personasSel.size === 1) {
     // Una sola persona seleccionada: mostramos su evolución período por período
     const id = [...personasSel][0];
-    const persona = PERSONAL[id];
     const periodosOrdenados = periodosActivos.slice().sort((a,b) => (PERIODOS[a]?.fechaInicio||"").localeCompare(PERIODOS[b]?.fechaInicio||""));
     labels = periodosOrdenados.map(pid => "HS de " + (PERIODOS[pid]?.nombre || "?"));
-    const data = periodosOrdenados.map(pid => {
+    const d100 = [], d200 = [], dnoc = [];
+    periodosOrdenados.forEach(pid => {
       const c = (CARGAS[pid]||{})[id];
+      let h100=0,h200=0,hnoc=0;
       if (c && c.estado === "aprobado") {
         const tot = calcularTotales(c.items);
-        granTotal.h100 += tot.h100; granTotal.h200 += tot.h200; granTotal.hnoc += tot.hnoc; granTotal.total += tot.total;
-        return tot.total;
+        h100 = tot.h100; h200 = tot.h200; hnoc = tot.hnoc;
+        granTotal.h100 += h100; granTotal.h200 += h200; granTotal.hnoc += hnoc;
       }
-      return 0;
+      d100.push(h100); d200.push(h200); dnoc.push(hnoc);
     });
-    datasets = [{ label: persona ? persona.apellidoNombre : "Total", data, backgroundColor: "#2a78d6" }];
+    datasets = [
+      { label: "100%", data: d100, backgroundColor: COLOR_100 },
+      { label: "200%", data: d200, backgroundColor: COLOR_200 },
+      { label: "Nocturnas", data: dnoc, backgroundColor: COLOR_NOC }
+    ];
   }
   else if (modoCmp === "personas") {
     const ordenPorSector = (ids) => ids.slice().sort((a,b) => {
@@ -1679,41 +1700,50 @@ function renderStats(){
         : [...personasSel]
     );
     labels = activos.map(id => PERSONAL[id]?.apellidoNombre || "?");
-    const data = activos.map(id => {
-      let sum = 0;
+    const d100 = [], d200 = [], dnoc = [];
+    activos.forEach(id => {
+      let h100=0,h200=0,hnoc=0;
       periodosActivos.forEach(pid => {
         const c = (CARGAS[pid]||{})[id];
         if (c && c.estado === "aprobado") {
           const tot = calcularTotales(c.items);
-          sum += tot.total;
-          granTotal.h100 += tot.h100; granTotal.h200 += tot.h200; granTotal.hnoc += tot.hnoc; granTotal.total += tot.total;
+          h100 += tot.h100; h200 += tot.h200; hnoc += tot.hnoc;
         }
       });
-      return sum;
+      granTotal.h100 += h100; granTotal.h200 += h200; granTotal.hnoc += hnoc;
+      d100.push(h100); d200.push(h200); dnoc.push(hnoc);
     });
-    datasets = [{ label:"Total horas", data, backgroundColor:"#2a78d6" }];
+    datasets = [
+      { label: "100%", data: d100, backgroundColor: COLOR_100 },
+      { label: "200%", data: d200, backgroundColor: COLOR_200 },
+      { label: "Nocturnas", data: dnoc, backgroundColor: COLOR_NOC }
+    ];
   }
   else { // periodos
     labels = periodosActivos.map(id => "HS de " + (PERIODOS[id]?.nombre || "?"));
-    const data = periodosActivos.map(pid => {
-      let sum = 0;
+    const d100 = [], d200 = [], dnoc = [];
+    periodosActivos.forEach(pid => {
+      let h100=0,h200=0,hnoc=0;
       Object.values(CARGAS[pid] || {}).forEach(c => {
         if (c.estado === "aprobado") {
           const tot = calcularTotales(c.items);
-          sum += tot.total;
-          granTotal.h100 += tot.h100; granTotal.h200 += tot.h200; granTotal.hnoc += tot.hnoc; granTotal.total += tot.total;
+          h100 += tot.h100; h200 += tot.h200; hnoc += tot.hnoc;
         }
       });
-      return sum;
+      granTotal.h100 += h100; granTotal.h200 += h200; granTotal.hnoc += hnoc;
+      d100.push(h100); d200.push(h200); dnoc.push(hnoc);
     });
-    datasets = [{ label:"Total horas", data, backgroundColor:"#1baf7a" }];
+    datasets = [
+      { label: "100%", data: d100, backgroundColor: COLOR_100 },
+      { label: "200%", data: d200, backgroundColor: COLOR_200 },
+      { label: "Nocturnas", data: dnoc, backgroundColor: COLOR_NOC }
+    ];
   }
 
   document.getElementById("stat-cards").innerHTML = `
     <div class="stat-box"><div class="l">100%</div><div class="v">${granTotal.h100}</div></div>
     <div class="stat-box"><div class="l">200%</div><div class="v">${granTotal.h200}</div></div>
     <div class="stat-box"><div class="l">Nocturnas</div><div class="v">${granTotal.hnoc}</div></div>
-    <div class="stat-box"><div class="l">Total general</div><div class="v" style="color:var(--green);">${granTotal.total}</div></div>
   `;
 
   if (chartCmp) chartCmp.destroy();
@@ -1722,10 +1752,10 @@ function renderStats(){
     data: { labels, datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: datasets.length > 1 } },
+      plugins: { legend: { display: true } },
       scales: {
-        x: { ticks:{color:"#8fa5b3"}, grid:{display:false} },
-        y: { ticks:{color:"#8fa5b3"}, grid:{color:"#2b3b48"}, beginAtZero:true }
+        x: { stacked: true, ticks:{color:"#8fa5b3"}, grid:{display:false} },
+        y: { stacked: true, ticks:{color:"#8fa5b3"}, grid:{color:"#2b3b48"}, beginAtZero:true }
       }
     }
   });
