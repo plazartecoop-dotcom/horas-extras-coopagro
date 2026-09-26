@@ -12,6 +12,9 @@
 <!-- jsPDF para generar el PDF de Finanzas -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+<!-- JSZip para comprimir el documento HTML antes de compartirlo (Gmail/Outlook bloquean adjuntos .html sueltos) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 
@@ -1332,21 +1335,25 @@ function generarDocumentoFinanzas(periodoId, idsOverride){
   </div>
 </body></html>`;
 
-  const nombreArchivo = ("HS_" + periodo.nombre + "_Finanzas").replace(/\s+/g,"_") + ".html";
-  const blob = new Blob([html], { type: "text/html" });
-  const file = new File([blob], nombreArchivo, { type: "text/html" });
+  const nombreArchivoHtml = ("HS_" + periodo.nombre + "_Finanzas").replace(/\s+/g,"_") + ".html";
+  const nombreArchivoZip = nombreArchivoHtml.replace(/\.html$/, ".zip");
 
   registrarEnvioFinanzas("documento_html", periodoId, ids);
 
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    navigator.share({ files: [file], title: nombreArchivo }).catch(()=>{});
-  } else {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = nombreArchivo;
-    a.click();
-    alert("Se descargó el documento. Adjuntalo manualmente en WhatsApp o email para enviarlo a Finanzas.");
-  }
+  const zip = new JSZip();
+  zip.file(nombreArchivoHtml, html);
+  zip.generateAsync({ type: "blob" }).then(zipBlob => {
+    const file = new File([zipBlob], nombreArchivoZip, { type: "application/zip" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: nombreArchivoZip }).catch(()=>{});
+    } else {
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement("a");
+      a.href = url; a.download = nombreArchivoZip;
+      a.click();
+      alert("Se descargó el documento comprimido (.zip). Adjuntalo así en WhatsApp o email: Finanzas lo descomprime con doble clic y lo abre normal — así evitamos que el mail bloquee el archivo .html suelto.");
+    }
+  });
 }
 
 function compartirSeleccionadosListado(periodoId){
