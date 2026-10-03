@@ -301,9 +301,7 @@
           <button style="flex:none;" class="primary" onclick="compartirStats()">Compartir</button>
         </div>
         <div class="stat-grid" id="stat-cards"></div>
-        <div style="position:relative; width:100%; height:280px;">
-          <canvas id="chartCmp"></canvas>
-        </div>
+        <div id="chartCmp" style="display:flex; flex-direction:column; gap:14px;"></div>
       </div>
 
       <div id="stats-historico" class="hidden">
@@ -1082,30 +1080,33 @@ function cerrarModal(){ document.getElementById("modal-detalle").classList.add("
 function imprimirStats(){
   const area = document.getElementById("print-area");
   const resumen = document.getElementById("stat-cards").innerHTML;
-  const chartImg = document.getElementById("chartCmp").toDataURL("image/png", 1.0);
-  area.innerHTML = `
-    <div style="font-size:11px; text-transform:uppercase; color:#666;">Aceitera Coopagro</div>
-    <h2 style="margin:4px 0 14px;">Estadísticas de Horas Extras</h2>
-    <div style="display:flex; gap:10px; margin-bottom:16px;">${resumen}</div>
-    <img src="${chartImg}">
-  `;
-  window.print();
+  html2canvas(document.getElementById("chartCmp"), { backgroundColor: "#ffffff" }).then(canvas => {
+    const chartImg = canvas.toDataURL("image/png", 1.0);
+    area.innerHTML = `
+      <div style="font-size:11px; text-transform:uppercase; color:#666;">Aceitera Coopagro</div>
+      <h2 style="margin:4px 0 14px;">Estadísticas de Horas Extras</h2>
+      <div style="display:flex; gap:10px; margin-bottom:16px;">${resumen}</div>
+      <img src="${chartImg}" style="max-width:100%;">
+    `;
+    window.print();
+  });
 }
 
 function compartirStats(){
-  const canvas = document.getElementById("chartCmp");
-  canvas.toBlob(blob => {
-    const file = new File([blob], "estadisticas_horas_extras.png", { type: "image/png" });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      navigator.share({ files: [file], title: "Estadísticas de horas extras" }).catch(()=>{});
-    } else {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = "estadisticas_horas_extras.png";
-      a.click();
-      alert("Se descargó la imagen del gráfico. Adjuntala manualmente en WhatsApp o email.");
-    }
-  }, "image/png");
+  html2canvas(document.getElementById("chartCmp"), { backgroundColor: "#ffffff" }).then(canvas => {
+    canvas.toBlob(blob => {
+      const file = new File([blob], "estadisticas_horas_extras.png", { type: "image/png" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: "Estadísticas de horas extras" }).catch(()=>{});
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = "estadisticas_horas_extras.png";
+        a.click();
+        alert("Se descargó la imagen del gráfico. Adjuntala manualmente en WhatsApp o email.");
+      }
+    }, "image/png");
+  });
 }
 
 function cambiarTipoEdicion(select){
@@ -1583,7 +1584,6 @@ let modoCmp = "sectores";
 let personasSel = new Set();
 let periodosSel = new Set();
 let mostrarTodasPersonas = true;
-let chartCmp = null;
 
 function setModoCmp(modo){
   modoCmp = modo;
@@ -1639,13 +1639,10 @@ function renderStats(){
   }
 
   const periodosActivos = periodosSel.size ? [...periodosSel] : Object.keys(PERIODOS);
-  let labels = [], datasets = [];
+  let entradas = []; // [{ label, sub, h100, h200, hnoc }]
   let granTotal = {h100:0,h200:0,hnoc:0};
-  const COLOR_100 = "#2a78d6", COLOR_200 = "#eb6834", COLOR_NOC = "#8b5fbf";
 
   if (modoCmp === "sectores") {
-    const sectoresConDatos = [];
-    const d100 = [], d200 = [], dnoc = [];
     SECTORES.forEach(sector => {
       if (sector === "Administrador") return;
       let s = {h100:0,h200:0,hnoc:0};
@@ -1660,24 +1657,15 @@ function renderStats(){
         });
       });
       if (s.h100 || s.h200 || s.hnoc) {
-        sectoresConDatos.push(sector);
-        d100.push(s.h100); d200.push(s.h200); dnoc.push(s.hnoc);
+        entradas.push({ label: sector, sub: (s.h100+s.h200+s.hnoc) + " hs", ...s });
         granTotal.h100 += s.h100; granTotal.h200 += s.h200; granTotal.hnoc += s.hnoc;
       }
     });
-    labels = sectoresConDatos;
-    datasets = [
-      { label: "100%", data: d100, backgroundColor: COLOR_100 },
-      { label: "200%", data: d200, backgroundColor: COLOR_200 },
-      { label: "Nocturnas", data: dnoc, backgroundColor: COLOR_NOC }
-    ];
   }
   else if (modoCmp === "personas" && !mostrarTodasPersonas && personasSel.size === 1) {
     // Una sola persona seleccionada: mostramos su evolución período por período
     const id = [...personasSel][0];
     const periodosOrdenados = periodosActivos.slice().sort((a,b) => (PERIODOS[a]?.fechaInicio||"").localeCompare(PERIODOS[b]?.fechaInicio||""));
-    labels = periodosOrdenados.map(pid => "HS de " + (PERIODOS[pid]?.nombre || "?"));
-    const d100 = [], d200 = [], dnoc = [];
     periodosOrdenados.forEach(pid => {
       const c = (CARGAS[pid]||{})[id];
       let h100=0,h200=0,hnoc=0;
@@ -1686,13 +1674,8 @@ function renderStats(){
         h100 = tot.h100; h200 = tot.h200; hnoc = tot.hnoc;
         granTotal.h100 += h100; granTotal.h200 += h200; granTotal.hnoc += hnoc;
       }
-      d100.push(h100); d200.push(h200); dnoc.push(hnoc);
+      entradas.push({ label: "HS de " + (PERIODOS[pid]?.nombre || "?"), sub: (h100+h200+hnoc) + " hs", h100, h200, hnoc });
     });
-    datasets = [
-      { label: "100%", data: d100, backgroundColor: COLOR_100 },
-      { label: "200%", data: d200, backgroundColor: COLOR_200 },
-      { label: "Nocturnas", data: dnoc, backgroundColor: COLOR_NOC }
-    ];
   }
   else if (modoCmp === "personas") {
     const ordenPorSector = (ids) => ids.slice().sort((a,b) => {
@@ -1706,8 +1689,6 @@ function renderStats(){
         ? Object.keys(PERSONAL).filter(id => PERSONAL[id].sector !== "Administrador")
         : [...personasSel]
     );
-    labels = activos.map(id => PERSONAL[id]?.apellidoNombre || "?");
-    const d100 = [], d200 = [], dnoc = [];
     activos.forEach(id => {
       let h100=0,h200=0,hnoc=0;
       periodosActivos.forEach(pid => {
@@ -1718,17 +1699,10 @@ function renderStats(){
         }
       });
       granTotal.h100 += h100; granTotal.h200 += h200; granTotal.hnoc += hnoc;
-      d100.push(h100); d200.push(h200); dnoc.push(hnoc);
+      entradas.push({ label: PERSONAL[id]?.apellidoNombre || "?", sub: (h100+h200+hnoc) + " hs", h100, h200, hnoc });
     });
-    datasets = [
-      { label: "100%", data: d100, backgroundColor: COLOR_100 },
-      { label: "200%", data: d200, backgroundColor: COLOR_200 },
-      { label: "Nocturnas", data: dnoc, backgroundColor: COLOR_NOC }
-    ];
   }
   else { // periodos
-    labels = periodosActivos.map(id => "HS de " + (PERIODOS[id]?.nombre || "?"));
-    const d100 = [], d200 = [], dnoc = [];
     periodosActivos.forEach(pid => {
       let h100=0,h200=0,hnoc=0;
       Object.values(CARGAS[pid] || {}).forEach(c => {
@@ -1738,13 +1712,8 @@ function renderStats(){
         }
       });
       granTotal.h100 += h100; granTotal.h200 += h200; granTotal.hnoc += hnoc;
-      d100.push(h100); d200.push(h200); dnoc.push(hnoc);
+      entradas.push({ label: "HS de " + (PERIODOS[pid]?.nombre || "?"), sub: (h100+h200+hnoc) + " hs", h100, h200, hnoc });
     });
-    datasets = [
-      { label: "100%", data: d100, backgroundColor: COLOR_100 },
-      { label: "200%", data: d200, backgroundColor: COLOR_200 },
-      { label: "Nocturnas", data: dnoc, backgroundColor: COLOR_NOC }
-    ];
   }
 
   document.getElementById("stat-cards").innerHTML = `
@@ -1753,22 +1722,41 @@ function renderStats(){
     <div class="stat-box"><div class="l">Nocturnas</div><div class="v">${granTotal.hnoc}</div></div>
   `;
 
-  if (chartCmp) chartCmp.destroy();
-  chartCmp = new Chart(document.getElementById("chartCmp"), {
-    type: "bar",
-    data: { labels, datasets },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: true } },
-      scales: {
-        x: { ticks:{color:"#8fa5b3"}, grid:{display:false} },
-        y: { ticks:{color:"#8fa5b3"}, grid:{color:"#2b3b48"}, beginAtZero:true }
-      }
-    }
-  });
+  renderBarrasComposicion(entradas);
+}
+
+function renderBarrasComposicion(entradas){
+  const cont = document.getElementById("chartCmp");
+  if (!entradas.length) {
+    cont.innerHTML = '<p class="muted">No hay datos aprobados para mostrar con esta selección.</p>';
+    return;
+  }
+  const seg = (tipo, valor, total) => {
+    if (!valor) return "";
+    const estilos = {
+      "100": { bg:"#86EFAC", bd:"#16A34A", tx:"#166534", txt:"100%" },
+      "200": { bg:"#FDBA74", bd:"#F97316", tx:"#9A3412", txt:"200%" },
+      "noc": { bg:"#D8B4FE", bd:"#9333EA", tx:"#6B21A8", txt:"Noct" }
+    };
+    const e = estilos[tipo];
+    const pct = Math.round((valor / total) * 100);
+    return `<div style="width:${pct}%; background:${e.bg}; border:2.5px solid ${e.bd}; border-radius:var(--radius); color:${e.tx}; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; white-space:nowrap; overflow:hidden; padding:0 4px;">${e.txt} · ${valor}</div>`;
+  };
+  cont.innerHTML = entradas.map(en => {
+    const total = en.h100 + en.h200 + en.hnoc;
+    return `<div style="display:flex; align-items:center; gap:8px;">
+      <div style="width:110px; flex-shrink:0;">
+        <div style="font-weight:600; font-size:14px;">${en.label}</div>
+        <div style="font-size:12px; color:var(--muted);">${en.sub}</div>
+      </div>
+      <div style="display:flex; flex:1; height:30px; gap:3px;">
+        ${seg("100", en.h100, total)}${seg("200", en.h200, total)}${seg("noc", en.hnoc, total)}
+      </div>
+    </div>`;
+  }).join("");
 }
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 </body>
 </html>
