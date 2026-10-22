@@ -1344,17 +1344,20 @@ function generarDocumentoFinanzas(periodoId, idsOverride){
   const zip = new JSZip();
   zip.file(nombreArchivoHtml, html);
   zip.generateAsync({ type: "blob" }).then(zipBlob => {
-    const file = new File([zipBlob], nombreArchivoZip, { type: "application/zip" });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      navigator.share({ files: [file], title: nombreArchivoZip }).catch(()=>{});
-    } else {
+    const descargar = () => {
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement("a");
       a.href = url; a.download = nombreArchivoZip;
       a.click();
       alert("Se descargó el documento comprimido (.zip). Adjuntalo así en WhatsApp o email: Finanzas lo descomprime con doble clic y lo abre normal — así evitamos que el mail bloquee el archivo .html suelto.");
+    };
+    const file = new File([zipBlob], nombreArchivoZip, { type: "application/zip" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: nombreArchivoZip }).catch(descargar);
+    } else {
+      descargar();
     }
-  });
+  }).catch(() => alert("No se pudo generar el documento. Probá de nuevo."));
 }
 
 function compartirSeleccionadosListado(periodoId){
